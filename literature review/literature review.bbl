@@ -1,0 +1,37 @@
+\begin{thebibliography}{1}
+
+\bibitem{DBLP:journals/corr/KendallG17}
+Alex Kendall and Yarin Gal.
+\newblock What uncertainties do we need in bayesian deep learning for computer
+  vision?
+\newblock {\em CoRR}, abs/1703.04977, 2017.
+
+\bibitem{DBLP:journals/corr/abs-1907-06890}
+Mattia Seg{\`{u}}, Antonio Loquercio, and Davide Scaramuzza.
+\newblock A general framework for uncertainty estimation in deep learning.
+\newblock {\em CoRR}, abs/1907.06890, 2019.
+
+\bibitem{gal2015dropout}
+Yarin Gal and Zoubin Ghahramani.
+\newblock Dropout as a bayesian approximation: Representing model uncertainty
+  in deep learning.
+\newblock {\em arXiv preprint arXiv:1506.02142}, 2015.
+
+\bibitem{gal2015bayesian}
+Yarin Gal and Zoubin Ghahramani.
+\newblock Bayesian convolutional neural networks with bernoulli approximate
+  variational inference, 2015.
+
+\bibitem{blundell2015weight}
+Charles Blundell, Julien Cornebise, Koray Kavukcuoglu, and Daan Wierstra.
+\newblock Weight uncertainty in neural networks, 2015.
+
+\bibitem{NIPS2017_7219}
+Balaji Lakshminarayanan, Alexander Pritzel, and Charles Blundell.
+\newblock Simple and scalable predictive uncertainty estimation using deep
+  ensembles.
+\newblock In I.~Guyon, U.~V. Luxburg, S.~Bengio, H.~Wallach, R.~Fergus,
+  S.~Vishwanathan, and R.~Garnett, editors, {\em Advances in Neural Information
+  Processing Systems 30}, pages 6402--6413. Curran Associates, Inc., 2017.
+
+\end{thebibliography}

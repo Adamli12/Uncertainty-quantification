@@ -1,0 +1,296 @@
+% Encoding: UTF-8
+
+@Article{DBLP:journals/corr/KendallG17,
+  author        = {Alex Kendall and Yarin Gal},
+  title         = {What Uncertainties Do We Need in Bayesian Deep Learning for Computer Vision?},
+  journal       = {CoRR},
+  year          = {2017},
+  volume        = {abs/1703.04977},
+  archiveprefix = {arXiv},
+  bibsource     = {dblp computer science bibliography, https://dblp.org},
+  biburl        = {https://dblp.org/rec/bib/journals/corr/KendallG17},
+  eprint        = {1703.04977},
+  timestamp     = {Mon, 13 Aug 2018 16:48:58 +0200},
+  url           = {http://arxiv.org/abs/1703.04977},
+}
+
+@Article{DBLP:journals/corr/abs-1907-06890,
+  author        = {Mattia Seg{\`{u}} and Antonio Loquercio and Davide Scaramuzza},
+  title         = {A General Framework for Uncertainty Estimation in Deep Learning},
+  journal       = {CoRR},
+  year          = {2019},
+  volume        = {abs/1907.06890},
+  archiveprefix = {arXiv},
+  bibsource     = {dblp computer science bibliography, https://dblp.org},
+  biburl        = {https://dblp.org/rec/bib/journals/corr/abs-1907-06890},
+  eprint        = {1907.06890},
+  timestamp     = {Tue, 23 Jul 2019 10:54:22 +0200},
+  url           = {http://arxiv.org/abs/1907.06890},
+}
+
+@Misc{blundell2015weight,
+  author        = {Charles Blundell and Julien Cornebise and Koray Kavukcuoglu and Daan Wierstra},
+  title         = {Weight Uncertainty in Neural Networks},
+  year          = {2015},
+  archiveprefix = {arXiv},
+  eprint        = {1505.05424},
+  primaryclass  = {stat.ML},
+}
+
+@Article{gal2015dropout,
+  author  = {Gal, Yarin and Ghahramani, Zoubin},
+  title   = {Dropout as a Bayesian Approximation: Representing Model Uncertainty in Deep Learning},
+  journal = {arXiv preprint arXiv:1506.02142},
+  year    = {2015},
+}
+
+@InCollection{NIPS2017_7219,
+  author    = {Lakshminarayanan, Balaji and Pritzel, Alexander and Blundell, Charles},
+  title     = {Simple and Scalable Predictive Uncertainty Estimation using Deep Ensembles},
+  booktitle = {Advances in Neural Information Processing Systems 30},
+  publisher = {Curran Associates, Inc.},
+  year      = {2017},
+  editor    = {I. Guyon and U. V. Luxburg and S. Bengio and H. Wallach and R. Fergus and S. Vishwanathan and R. Garnett},
+  pages     = {6402--6413},
+  url       = {http://papers.nips.cc/paper/7219-simple-and-scalable-predictive-uncertainty-estimation-using-deep-ensembles.pdf},
+}
+
+@Misc{gal2015bayesian,
+  author        = {Yarin Gal and Zoubin Ghahramani},
+  title         = {Bayesian Convolutional Neural Networks with Bernoulli Approximate Variational Inference},
+  year          = {2015},
+  archiveprefix = {arXiv},
+  eprint        = {1506.02158},
+  primaryclass  = {stat.ML},
+}
+
+@Misc{zeldes2017deep,
+  author        = {Yoel Zeldes and Stavros Theodorakis and Efrat Solodnik and Aviv Rotman and Gil Chamiel and Dan Friedman},
+  title         = {Deep density networks and uncertainty in recommender systems},
+  year          = {2017},
+  archiveprefix = {arXiv},
+  eprint        = {1711.02487},
+  primaryclass  = {cs.IR},
+}
+
+@InProceedings{kendall2018multi,
+  author    = {Kendall, Alex and Gal, Yarin and Cipolla, Roberto},
+  title     = {Multi-task learning using uncertainty to weigh losses for scene geometry and semantics},
+  booktitle = {Proceedings of the IEEE conference on computer vision and pattern recognition},
+  year      = {2018},
+  pages     = {7482--7491},
+}
+
+@InProceedings{Gal2016UncertaintyID,
+  author = {Yarin Gal},
+  title  = {Uncertainty in Deep Learning},
+  year   = {2016},
+}
+
+@InProceedings{Goldberger2017TrainingDN,
+  author    = {Jacob Goldberger and Ehud Ben-Reuven},
+  title     = {Training deep neural-networks using a noise adaptation layer},
+  booktitle = {ICLR},
+  year      = {2017},
+}
+
+@InProceedings{Mnih2012LearningTL,
+  author    = {Volodymyr Mnih and Geoffrey E. Hinton},
+  title     = {Learning to Label Aerial Images from Noisy Data},
+  booktitle = {ICML},
+  year      = {2012},
+}
+
+@Article{Frnay2014ClassificationIT,
+  author  = {Beno{\^i}t Fr{\'e}nay and Michel Verleysen},
+  title   = {Classification in the Presence of Label Noise: A Survey},
+  journal = {IEEE Transactions on Neural Networks and Learning Systems},
+  year    = {2014},
+  volume  = {25},
+  pages   = {845-869},
+}
+
+@InProceedings{wu2018deterministic,
+  author    = {Anqi Wu and Sebastian Nowozin and Edward Meeds and Richard E. Turner and Jose Miguel Hernandez-Lobato and Alexander L. Gaunt},
+  title     = {Deterministic Variational Inference for Robust Bayesian Neural Networks},
+  booktitle = {International Conference on Learning Representations},
+  year      = {2019},
+  url       = {https://openreview.net/forum?id=B1l08oAct7},
+}
+
+@Article{Kingma2015VariationalDA,
+  author  = {Diederik P. Kingma and Tim Salimans and Max Welling},
+  title   = {Variational Dropout and the Local Reparameterization Trick},
+  journal = {ArXiv},
+  year    = {2015},
+  volume  = {abs/1506.02557},
+}
+
+@Article{Xiao2015LearningFM,
+  author  = {Tong Xiao and Tian Xia and Yi Yang and Chang Huang and Xiaogang Wang},
+  title   = {Learning from massive noisy labeled data for image classification},
+  journal = {2015 IEEE Conference on Computer Vision and Pattern Recognition (CVPR)},
+  year    = {2015},
+  pages   = {2691-2699},
+}
+
+@Article{Sukhbaatar2014LearningFN,
+  author  = {Sainbayar Sukhbaatar and Rob Fergus},
+  title   = {Learning from Noisy Labels with Deep Neural Networks},
+  journal = {CoRR},
+  year    = {2014},
+  volume  = {abs/1406.2080},
+}
+
+@Article{10.5555/1120115.1120116,
+  author     = {Zhu, Xingquan and Wu, Xindong},
+  title      = {Class Noise vs. Attribute Noise: A Quantitative Study of Their Impacts},
+  journal    = {Artif. Intell. Rev.},
+  year       = {2004},
+  volume     = {22},
+  number     = {3},
+  pages      = {177–210},
+  month      = nov,
+  issn       = {0269-2821},
+  address    = {USA},
+  issue_date = {November 2004},
+  keywords   = {noise impacts, class noise, attribute noise, machine learning},
+  numpages   = {34},
+  publisher  = {Kluwer Academic Publishers},
+}
+
+@Misc{hendrycks2018using,
+  author        = {Dan Hendrycks and Mantas Mazeika and Duncan Wilson and Kevin Gimpel},
+  title         = {Using Trusted Data to Train Deep Networks on Labels Corrupted by Severe Noise},
+  year          = {2018},
+  archiveprefix = {arXiv},
+  eprint        = {1802.05300},
+  primaryclass  = {cs.LG},
+}
+
+@Article{article,
+  author  = {Qin, Zhen and Zhang, Zhengwen and Li, Yan and Guo, Jun},
+  title   = {Making Deep Neural Networks Robust to Label Noise: Cross-Training with a Novel Loss Function},
+  journal = {IEEE Access},
+  year    = {2019},
+  volume  = {PP},
+  pages   = {1-1},
+  month   = {09},
+  doi     = {10.1109/ACCESS.2019.2940653},
+}
+
+@Misc{shu2019metaweightnet,
+  author        = {Jun Shu and Qi Xie and Lixuan Yi and Qian Zhao and Sanping Zhou and Zongben Xu and Deyu Meng},
+  title         = {Meta-Weight-Net: Learning an Explicit Mapping For Sample Weighting},
+  year          = {2019},
+  archiveprefix = {arXiv},
+  eprint        = {1902.07379},
+  primaryclass  = {cs.LG},
+}
+
+@Misc{arazo2019unsupervised,
+  author        = {Eric Arazo and Diego Ortego and Paul Albert and Noel E. O'Connor and Kevin McGuinness},
+  title         = {Unsupervised Label Noise Modeling and Loss Correction},
+  year          = {2019},
+  archiveprefix = {arXiv},
+  eprint        = {1904.11238},
+  primaryclass  = {cs.CV},
+}
+
+@Misc{ribeiro2018deep,
+  author        = {Fabio De Sousa Ribeiro and Francesco Caliva and Mark Swainson and Kjartan Gudmundsson and Georgios Leontidis and Stefanos Kollias},
+  title         = {Deep Bayesian Self-Training},
+  year          = {2018},
+  archiveprefix = {arXiv},
+  eprint        = {1812.01681},
+  primaryclass  = {cs.CV},
+}
+
+@Misc{khler2019uncertainty,
+  author        = {Jan M. Köhler and Maximilian Autenrieth and William H. Beluch},
+  title         = {Uncertainty Based Detection and Relabeling of Noisy Image Labels},
+  year          = {2019},
+  archiveprefix = {arXiv},
+  eprint        = {1906.11876},
+  primaryclass  = {cs.CV},
+}
+
+@Article{10.1109/TPAMI.2015.2456899,
+  author     = {Liu, Tongliang and Tao, Dacheng},
+  title      = {Classification with Noisy Labels by Importance Reweighting},
+  journal    = {IEEE Trans. Pattern Anal. Mach. Intell.},
+  year       = {2016},
+  volume     = {38},
+  number     = {3},
+  pages      = {447–461},
+  month      = mar,
+  issn       = {0162-8828},
+  address    = {USA},
+  doi        = {10.1109/TPAMI.2015.2456899},
+  issue_date = {March 2016},
+  numpages   = {15},
+  publisher  = {IEEE Computer Society},
+  url        = {https://doi.org/10.1109/TPAMI.2015.2456899},
+}
+
+@Misc{sukhbaatar2014training,
+  author        = {Sainbayar Sukhbaatar and Joan Bruna and Manohar Paluri and Lubomir Bourdev and Rob Fergus},
+  title         = {Training Convolutional Networks with Noisy Labels},
+  year          = {2014},
+  archiveprefix = {arXiv},
+  eprint        = {1406.2080},
+  primaryclass  = {cs.CV},
+}
+
+@InProceedings{Bengio2009CurriculumL,
+  author    = {Yoshua Bengio and J{\'e}r{\^o}me Louradour and Ronan Collobert and Jason Weston},
+  title     = {Curriculum learning},
+  booktitle = {ICML '09},
+  year      = {2009},
+}
+
+@InProceedings{Han2018CoteachingRT,
+  author    = {Bo Han and Quanming Yao and Xingrui Yu and Gang Niu and Miao Xu and Weihua Hu and Ivor Wai-Hung Tsang and Masashi Sugiyama},
+  title     = {Co-teaching: Robust training of deep neural networks with extremely noisy labels},
+  booktitle = {NeurIPS},
+  year      = {2018},
+}
+
+@Article{Ren2018LearningTR,
+  author  = {Mengye Ren and Wenyuan Zeng and Bin Yang and Raquel Urtasun},
+  title   = {Learning to Reweight Examples for Robust Deep Learning},
+  journal = {ArXiv},
+  year    = {2018},
+  volume  = {abs/1803.09050},
+}
+
+@InProceedings{Zhang2018GeneralizedCE,
+  author    = {Zhilu Zhang and Mert R. Sabuncu},
+  title     = {Generalized Cross Entropy Loss for Training Deep Neural Networks with Noisy Labels},
+  booktitle = {NeurIPS},
+  year      = {2018},
+}
+
+@Article{Algan2019ImageCW,
+  author  = {Gorkem Algan and Ilkay Ulusoy},
+  title   = {Image Classification with Deep Learning in the Presence of Noisy Labels: A Survey},
+  journal = {ArXiv},
+  year    = {2019},
+  volume  = {abs/1912.05170},
+}
+
+@InProceedings{Welling2011BayesianLV,
+  author    = {Max Welling and Yee Whye Teh},
+  title     = {Bayesian Learning via Stochastic Gradient Langevin Dynamics},
+  booktitle = {ICML},
+  year      = {2011},
+}
+
+@InProceedings{Korattikara2015BayesianDK,
+  author    = {Anoop Korattikara and Vivek Rathod and Kevin Murphy and M. Welling},
+  title     = {Bayesian dark knowledge},
+  booktitle = {NIPS 2015},
+  year      = {2015},
+}
+
+@Comment{jabref-meta: databaseType:bibtex;}
