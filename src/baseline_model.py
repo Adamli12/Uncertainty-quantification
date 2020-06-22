@@ -8,9 +8,12 @@ import os
 import matplotlib.pyplot as plt
 import time
 import math
+import copy
+from torch.utils.data import DataLoader
 from models.densenet import DenseNet
 from models.resnet import ResNet
 from models.wideresnet import WideResNet
+
 #thanks to Javier Antoran's implementation of mc dropout https://github.com/JavierAntoran/Bayesian-Neural-Networks
 #thanks to the code by Shu et. al (https://github.com/xjtushujun/meta-weight-net)
 #thanks to the code by Ribeiro et. al(https://github.com/fabio-deep/Deep-Bayesian-Self-Training)
@@ -47,18 +50,24 @@ class Simple_CNN_module(torch.nn.Module):
         return self.net(input)
 
 class Baseline_model:
-    def __init__(self,args,results_dir,device):
+    def __init__(self,args,results_dir,device,train_loader,test_loader,noised_sample):
 
         self.args=args
         self.loss_type = args.loss_type
         self.dropout_prob = args.dropout_prob
-        self.epoch_num = args.epochs
         self.log_interval = args.log_interval
         self.device = device
         self.n_classes = args.num_classes
         self.mc_n_sample = args.MC_n_samples
         self.n_var = args.n_var
         self.reweight = args.reweight
+        self.train_loader=train_loader
+        self.test_loader=test_loader
+        self.noised_sample=noised_sample
+        self.relabel_dataset=copy.deepcopy(self.train_loader.dataset.dataset)#the unchangable dataset
+        self.current_dataset=copy.deepcopy(self.train_loader.dataset.dataset)#changable dataset
+        self.dataset_size=len(self.relabel_dataset)
+        self.relabel_loader=DataLoader(dataset=self.relabel_dataset,batch_size=self.args.batch_size,shuffle=False)
 
         if args.model=="dn":
             self.module = DenseNet(dropout_prob=args.dropout_prob,growth_rate=args.net_arg,bottleneck=4,init_channels=args.growth_rate*2,trans_ratio=0.5,n_classes=self.n_classes,depth=args.depth,n_dense_blocks=3,n_var=args.n_var)
@@ -68,34 +77,22 @@ class Baseline_model:
             self.module = WideResNet(args.depth, args.num_classes, args.n_var, args.net_arg, args.dropout_prob)
         self.nll_criterion=nn.NLLLoss(reduction="none").to(self.device)
         self.crossentropy_criterion=nn.CrossEntropyLoss(reduction="none").to(self.device)
-        #self.optimizer = optim.Adam(self.module.parameters(), lr=args.learning_rate)
-        #self.optimizer = optim.SGD(self.module.parameters(), lr=args.learning_rate)
-        self.optimizer = optim.SGD(self.module.parameters(), lr=args.learning_rate, momentum=args.momentum, weight_decay=args.weight_decay,nesterov=args.nesterov)
-        if args.lr_scheduler=="multistep":
-            self.lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(self.optimizer, milestones=args.milestones)
-        elif args.lr_scheduler=="cosine":
-            self.lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer, T_max=5,eta_min=4e-08)
-        elif args.lr_scheduler=="cosine_m":
-            pass
-        else:
-            assert False, "invalid lr scheduler"
 
         #self.results_dir = os.path.join(results_dir,time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime()))
         #settingstr=args.corruption_type+str(args.corruption_prob)+"_"+args.model+str(args.depth)+str(args.net_arg)+"_"+args.lr_scheduler+"_"+"base"
-        self.settingstr=args.corruption_type+str(args.corruption_prob)+"_"+args.model+str(args.depth)+str(args.net_arg)+"_"+str(args.num_classes)+'_'+args.loss_type+"_"+str(args.size_ratio)+'_'+str(args.train_class)+'_'+str(args.test_class)+"_"+args.lr_scheduler+"_"+args.reweight+'_'+args.reweight_function+'_'+str(args.dropout_prob)
+        self.settingstr=args.corruption_type+str(args.corruption_prob)+"_"+args.model+str(args.depth)+str(args.net_arg)+"_"+str(args.num_classes)+'_'+args.loss_type+"_"+str(args.size_ratio)+'_'+str(args.train_class)+'_'+str(args.test_class)+"_"+args.lr_scheduler+"_"+args.reweight+'_'+args.reweight_norm+'_'+args.reweight_function+'_'+str(args.dropout_prob)+"_"+str(args.p0epochs)+"_"+str(args.p1epochs)+"_"+str(args.clean_only)+"_"+args.relabel_f+"_"+str(args.relabel_thre)
         self.results_dir = os.path.join(results_dir,self.settingstr)
         if not os.path.exists(self.results_dir):
             os.makedirs(self.results_dir)
         self.best_test_acc=0
         self.last_test_acc=0
-        self.log_file_dir = os.path.join(self.results_dir,"log")
-        self.log_file = str()
-        self.log_file += "Hyperparameters:\n"+str(args)+"\n"
+        self.log_file_dir = os.path.join(self.results_dir,"log.txt")
+        self.log_file = open(self.log_file_dir,"w",1)
+        self.log_file.write("Hyperparameters:\n"+str(args)+"\n")
         total_params=0
         for x in filter(lambda p: p.requires_grad, self.module.parameters()):
             total_params += np.prod(x.data.numpy().shape)
-        self.log_file += " == total parameters: " + str(total_params) + "\n"
-
+        self.log_file.write(" == total parameters: " + str(total_params) + "\n")
 
         self.module = torch.nn.DataParallel(self.module).to(device)
         
@@ -162,7 +159,7 @@ class Baseline_model:
 
     def sample_predict(self, x, T):#x: N*C*H*W
         ''' ---------------------- MONTE CARLO DROPOUT --------------------------'''
-        #predictions: T*N*(n_classes+1)
+        #predictions: T*N*(n_classes+n_var)
         for i in range(T):
             pred=self.module(x)
             if i==0:
@@ -171,32 +168,19 @@ class Baseline_model:
         return predictions
 
     def compute_weights(self,aleatorics,epistemics):
-        
-        
-        
-        
-        
-        
-        #这里不能用batch来norm！！！！！
-
-
-
-
-
-
-
-
-
-
         overalls=aleatorics+epistemics
         if self.args.reweight_function=="exp":
             weights=1/torch.exp(overalls)
-            weights=torch.div(weights,(torch.sum(weights)))
-            print(weights)
         if self.args.reweight_function=="inverse":
             weights=1/overalls
+        if self.args.reweight_norm=="batch":
             weights=torch.div(weights,(torch.sum(weights)))
-            #print(weights)
+        elif self.args.reweight_norm=="sig_m":
+            weights=torch.sigmoid(weights)
+            weights=weights*2-1
+            weights=weights/len(weights)
+        elif self.args.reweight_norm=="none":#DBST
+            weights=weights/len(weights)
         return weights
 
     def compute_acc(self,label,pred):#preds: T*N*n_classes
@@ -208,157 +192,242 @@ class Baseline_model:
         res=correct.view(-1).float().sum()/batch_size
         return res
 
-    def train(self,train_loader,test_loader):
+    def relabel(self):
+        self.module.eval()
+        train_acc = 0.
+        data_labels=self.relabel_dataset.targets
+        pred_labels=np.zeros(self.dataset_size)
+        all_weights=np.zeros(self.dataset_size)
+        index=0
+        for batch_idx, (data,label) in enumerate(self.relabel_loader):
+            data = data.to(self.device)
+            label = label.to(self.device)
+            #data = data.float()
+            #label = label.float()
+            if self.dropout_prob==0:
+                pred = self.sample_predict(data,1)#MC_preds
+            else:
+                pred = self.sample_predict(data,self.mc_n_sample)#MC_preds
+            aleatorics,epistemics,logits_var,variational_ratio=self.calculate_uncertainty(pred)
+            if self.reweight=="none":
+                weights=torch.ones(pred.shape[1])
+                weights/=len(data)
+            elif self.reweight=="what":
+                weights = self.compute_weights(epistemics,logits_var)#这weight是归一化的
+            elif self.reweight=="dbst":
+                weights = self.compute_weights(aleatorics,epistemics)#这weight是归一化的
+            elif self.reweight=="entropy":
+                weights = self.compute_weights(epistemics,0)#这weight是归一化的
+            elif self.reweight=="variance":
+                weights = self.compute_weights(logits_var,0)#这weight是归一化的
+            elif self.reweight=="a_pred":
+                weights = self.compute_weights(aleatorics,0)#这weight是归一化的
+            elif self.reweight=="var_ratio":
+                weights = self.compute_weights(variational_ratio,0)#这weight是归一化的
+            all_weights[index:index+len(label)]=weights.cpu()
+            probs = torch.softmax(pred.detach()[:,:,:self.n_classes],-1)
+            final_pred=probs.mean(0)#N*K
+            _, batch_pred_label = final_pred.topk(1, -1, True, True)
+            acc=self.compute_acc(label,pred.detach()[:,:,:self.n_classes])
+            train_acc+=acc.item()*len(data)
+            pred_labels[index:index+len(label)]=batch_pred_label.reshape(-1).cpu()
+            index+=len(label)
+            if batch_idx%self.args.log_interval==0:
+                print(weights)
+                self.log_file.write((str(weights)+"\n"))
+        print("relabeling...")
+        self.log_file.write("relabeling..."+"\n")
+
+
+        #relabel_idx=(all_weights<self.args.relabel_thre/self.args.batch_size).astype(int)
+        relabel_idx=np.zeros(self.dataset_size)
+        relabel_idx[all_weights.argsort()[0:int(self.dataset_size*self.args.relabel_thre)]]=1
+
+
+        a=relabel_idx+self.noised_sample#0,1,2
+        b=relabel_idx-self.noised_sample#-1,0,1
+        if relabel_idx.sum()==0:
+            precision=0
+        else:
+            precision=((a+10*b)==2).astype(int).sum()/relabel_idx.sum()#so a should be 2 and b should be 0, which means that relabel_idx is 1 and noise_sample is 1
+        relabeled_labels=relabel_idx*pred_labels+(1-relabel_idx)*data_labels
+        self.log_file.write('====> Average precision: {:.4f}\n'.format(precision))
+        print('====> Average precision: {:.4f}\n'.format(precision))
+        self.current_dataset.targets=torch.tensor(relabeled_labels).long()
+        self.train_loader=DataLoader(dataset=self.current_dataset,batch_size=self.args.batch_size,shuffle=True)
+        return 0
+
+    def train(self):
         begin=time.perf_counter()
         self.module.train()
-        loss_curve=[]
-        test_loss_curve=[]
-        acc_curve=[]
-        test_acc_curve=[]
+        self.loss_curve=[]
+        self.test_loss_curve=[]
+        self.acc_curve=[]
+        self.test_acc_curve=[]
         if self.args.corruption_type=="partial_unif":
-            uncertainty_curve=[[],[],[],[]]
-            co_test_uncertainty_curve=[[],[],[],[]]
-            cl_test_uncertainty_curve=[[],[],[],[]]
+            self.uncertainty_curve=[[],[],[],[]]
+            self.co_test_uncertainty_curve=[[],[],[],[]]
+            self.cl_test_uncertainty_curve=[[],[],[],[]]
         else:
-            uncertainty_curve=[[],[],[],[]]
-            test_uncertainty_curve=[[],[],[],[]]
-        tt=0
-        uncertainty_index=0
-        for epoch in range(1,self.epoch_num+1):
-            self.module.train()
-            train_loss = 0.
-            train_acc = 0.
-            print('current lr {:.5e}'.format(self.optimizer.param_groups[0]['lr']))
-            self.log_file+='current lr {:.5e}\n'.format(self.optimizer.param_groups[0]['lr'])
-            for batch_idx, (data,label) in enumerate(train_loader):
-                data = data.to(self.device)
-                label = label.to(self.device)
-                #data = data.float()
-                #label = label.float()
-                if self.reweight!="none":
-                    pred = self.sample_predict(data,self.mc_n_sample)#MC_preds:T*N*(K+1)
-                else:
-                    if self.loss_type=="hs":
-                        pred = self.sample_predict(data,1)
-                    elif self.loss_type=="hm":
-                        pred = self.sample_predict(data,self.mc_n_sample)#MC_preds
-                    elif self.loss_type=="s":
-                        pred = self.sample_predict(data,1)#MC_preds
-                if self.loss_type=="hm":
-                    loss = self.heteroscedastic_crossentropy(label,pred,"multi")#这里用了mcdropout的prob_mean，应该没人用过，这里用是因为算不确定性已经把T个随机前传的logits全算了，但可能会导致时间复杂度很高
-                elif self.loss_type=="hs":
-                    loss = self.heteroscedastic_crossentropy(label,pred,"single")#这里用了与Kendall & Gal2017中相同的，train过程中是不用MC采样的，只会进行heteroscedastic采样
-                elif self.loss_type=="s":
-                    if self.args.loss_debug=="n":
-                        pred_prob=torch.softmax(pred[:,:,:self.n_classes],-1).mean(0)#pred T*N*K, pred_prob N*K
-                        loss = self.nll_criterion(torch.log(torch.clamp(pred_prob, 1e-11, 1 - 1e-11)),label)
-                    elif self.args.loss_debug=="c":
-                        loss = self.crossentropy_criterion(pred[0,:,:self.n_classes],label)
-                aleatorics,epistemics,logits_var,variational_ratio=self.calculate_uncertainty(pred)
-                uncertainty_curve[0].append(aleatorics.mean().item())
-                uncertainty_curve[1].append(epistemics.mean().item())
-                uncertainty_curve[2].append(logits_var.mean().item())
-                uncertainty_curve[3].append(variational_ratio.mean().item())
-                if self.reweight=="what":
-                    weights = self.compute_weights(epistemics,logits_var)#这weight是归一化的
-                    loss = torch.mul(weights,loss)
-                if self.reweight=="dbst":
-                    weights = self.compute_weights(aleatorics,epistemics)#这weight是归一化的
-                    loss = torch.mul(weights,loss)
-                if self.reweight=="entropy":
-                    weights = self.compute_weights(epistemics,0)#这weight是归一化的
-                    loss = torch.mul(weights,loss)
-                if self.reweight=="variance":
-                    weights = self.compute_weights(logits_var,0)#这weight是归一化的
-                    loss = torch.mul(weights,loss)
-                if self.reweight=="a_pred":
-                    weights = self.compute_weights(aleatorics,0)#这weight是归一化的
-                    loss = torch.mul(weights,loss)
-                if self.reweight=="var_ratio":
-                    weights = self.compute_weights(variational_ratio,0)#这weight是归一化的
-                    loss = torch.mul(weights,loss)
-                else:
-                    loss/=len(data)
-                    pass
-                loss=torch.sum(loss)#这里不reweight则是平均的loss，reweight则是加权平均，权重和为1
-                self.optimizer.zero_grad()
-                loss.backward()
-                self.optimizer.step()
-                train_loss+=loss.item()*len(data)
-                loss_curve.append(loss.item())
-                acc=self.compute_acc(label,pred.detach()[:,:,:self.n_classes])
-                train_acc+=acc.item()*len(data)
-                acc_curve.append(acc.item())
-                if self.args.lr_scheduler=="cosine_m":
-                    dt = math.pi/float(self.args.epochs)
-                    tt += float(dt)/(len(train_loader.dataset)/float(self.args.batch_size))
-                    if tt >= math.pi - 0.05:
-                        tt = math.pi - 0.05
-                    curT = math.pi/2.0 + tt
-                    new_lr = self.args.learning_rate * (1.0 + math.sin(curT))/2.0    # lr_min = 0, lr_max = lr
-                    for param_group in self.optimizer.param_groups:
-                        param_group['lr'] = new_lr
-                if batch_idx % self.log_interval == 0:
-                    self.log_file+='Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.4f}\tAcc: {:.4f}\n'.format(
-                        epoch, batch_idx * len(data), len(train_loader.dataset),
-                        100. * batch_idx * len(data)/ len(train_loader.dataset),
-                        loss.item(),acc.item())
-                    print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.4f}\tAcc: {:.4f}'.format(
-                        epoch, batch_idx * len(data), len(train_loader.dataset),
-                        100. * batch_idx * len(data)/ len(train_loader.dataset),
-                        loss.item(),acc.item()))
-            mean_uncertainties=[np.mean(uncertainty_curve[0][uncertainty_index:]),np.mean(uncertainty_curve[1][uncertainty_index:]),np.mean(uncertainty_curve[2][uncertainty_index:]),np.mean(uncertainty_curve[3][uncertainty_index:])]
-            uncertainty_index=len(uncertainty_curve[0])
-            self.log_file+='====> Train Epoch: {} Average loss: {:.4f} Average acc: {:.4f}\n'.format(
-                epoch, train_loss/len(train_loader.dataset), train_acc/len(train_loader.dataset))
-            print('====> Train Epoch: {} Average loss: {:.4f} Average acc: {:.4f}'.format(
-                epoch, train_loss/len(train_loader.dataset), train_acc/len(train_loader.dataset)))
-            self.log_file+='====> Train Epoch: {} Average uncertainties: {:.4f}, {:.4f}, {:.4f}, {:.4f}\n'.format(epoch,mean_uncertainties[0],mean_uncertainties[1],mean_uncertainties[2],mean_uncertainties[3])
-            print('====> Train Epoch: {} Average uncertainties: {:.4f}, {:.4f}, {:.4f}, {:.4f}'.format(epoch,mean_uncertainties[0],mean_uncertainties[1],mean_uncertainties[2],mean_uncertainties[3]))
-            test_res=self.test(test_loader)
-            test_loss_curve.append(test_res[0])
-            test_acc_curve.append(test_res[1])
-            if self.args.corruption_type!="partial_unif":
-                test_uncertainty_curve[0].append(test_res[2][0].mean().item())
-                test_uncertainty_curve[1].append(test_res[2][1].mean().item())
-                test_uncertainty_curve[2].append(test_res[2][2].mean().item())
-                test_uncertainty_curve[3].append(test_res[2][3].mean().item())
+            self.uncertainty_curve=[[],[],[],[]]
+            self.test_uncertainty_curve=[[],[],[],[]]
+        self.uncertainty_index=0
+        def train_phase(phase,epoch_num):
+            tt=0
+            #self.optimizer = optim.Adam(self.module.parameters(), lr=self.args.learning_rate)
+            #self.optimizer = optim.SGD(self.module.parameters(), lr=self.args.learning_rate)
+            self.optimizer = optim.SGD(self.module.parameters(), lr=self.args.learning_rate, momentum=self.args.momentum, weight_decay=self.args.weight_decay,nesterov=self.args.nesterov)
+            if self.args.lr_scheduler=="multistep":
+                self.lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(self.optimizer, milestones=self.args.milestones)
+            elif self.args.lr_scheduler=="cosine":
+                self.lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer, T_max=5,eta_min=4e-08)
+            elif self.args.lr_scheduler=="cosine_m":
+                pass
             else:
-                co_test_uncertainty_curve[0].append(test_res[2][0].mean().item())
-                co_test_uncertainty_curve[1].append(test_res[2][1].mean().item())
-                co_test_uncertainty_curve[2].append(test_res[2][2].mean().item())
-                co_test_uncertainty_curve[3].append(test_res[2][3].mean().item())
-                cl_test_uncertainty_curve[0].append(test_res[3][0].mean().item())
-                cl_test_uncertainty_curve[1].append(test_res[3][1].mean().item())
-                cl_test_uncertainty_curve[2].append(test_res[3][2].mean().item())
-                cl_test_uncertainty_curve[3].append(test_res[3][3].mean().item())
-            if max(test_acc_curve)==test_res[1] or len(test_acc_curve)==0:#early stop
-                self.save()
-                self.best_test_acc=test_res[1]
-            if self.args.lr_scheduler!="cosine_m":
-                self.lr_scheduler.step()
-            self.last_test_acc=test_res[1]
-        
+                assert False, "invalid lr scheduler"
+            for epoch in range(1,epoch_num+1):
+                if self.args.relabel_f!="none" and phase!=0:
+                    if epoch%(int(self.args.relabel_f))==0:
+                        self.relabel()
+                self.module.train()
+                train_loss = 0.
+                train_acc = 0.
+                print('current lr {:.5e}'.format(self.optimizer.param_groups[0]['lr']))
+                self.log_file.write('current lr {:.5e}\n'.format(self.optimizer.param_groups[0]['lr']))
+                for batch_idx, (data,label) in enumerate(self.train_loader):
+                    data = data.to(self.device)
+                    label = label.to(self.device)
+                    #data = data.float()
+                    #label = label.float()
+                    if self.reweight!="none":
+                        pred = self.sample_predict(data,self.mc_n_sample)#MC_preds:T*N*(K+1)
+                    else:
+                        if self.loss_type=="hs":
+                            pred = self.sample_predict(data,1)
+                        elif self.loss_type=="hm":
+                            pred = self.sample_predict(data,self.mc_n_sample)#MC_preds
+                        elif self.loss_type=="s":
+                            pred = self.sample_predict(data,1)
+                    aleatorics,epistemics,logits_var,variational_ratio=self.calculate_uncertainty(pred)
+                    self.uncertainty_curve[0].append(aleatorics.mean().item())
+                    self.uncertainty_curve[1].append(epistemics.mean().item())
+                    self.uncertainty_curve[2].append(logits_var.mean().item())
+                    self.uncertainty_curve[3].append(variational_ratio.mean().item())
+                    if self.reweight=="none" or phase==0:
+                        weights=torch.ones(pred.shape[1]).to(self.device)
+                        weights/=len(data)
+                    elif self.reweight=="what":
+                        weights = self.compute_weights(epistemics,logits_var)#这weight是归一化的
+                    elif self.reweight=="dbst":
+                        weights = self.compute_weights(aleatorics,epistemics)#这weight是归一化的
+                    elif self.reweight=="entropy":
+                        weights = self.compute_weights(epistemics,0)#这weight是归一化的
+                    elif self.reweight=="variance":
+                        weights = self.compute_weights(logits_var,0)#这weight是归一化的
+                    elif self.reweight=="a_pred":
+                        weights = self.compute_weights(aleatorics,0)#这weight是归一化的
+                    elif self.reweight=="var_ratio":
+                        weights = self.compute_weights(variational_ratio,0)#这weight是归一化的
+
+                    if self.loss_type=="hm":
+                        loss = self.heteroscedastic_crossentropy(label,pred,"multi")#这里用了mcdropout的prob_mean，应该没人用过，这里用是因为算不确定性已经把T个随机前传的logits全算了，但可能会导致时间复杂度很高
+                    elif self.loss_type=="hs":
+                        loss = self.heteroscedastic_crossentropy(label,pred,"single")#这里用了与Kendall & Gal2017中相同的，train过程中是不用MC采样的，只会进行heteroscedastic采样
+                    elif self.loss_type=="s":
+                        if self.args.loss_debug=="n":
+                            pred_prob=torch.softmax(pred[:,:,:self.n_classes],-1).mean(0)#pred T*N*K, pred_prob N*K
+                            loss = self.nll_criterion(torch.log(torch.clamp(pred_prob, 1e-11, 1 - 1e-11)),label)
+                        elif self.args.loss_debug=="c":
+                            loss = self.crossentropy_criterion(pred[0,:,:self.n_classes],label)
+                    loss=torch.mul(weights,loss)
+                    loss=torch.sum(loss)#这里不reweight则是平均的loss，reweight则是加权平均，权重和为1
+                    self.optimizer.zero_grad()
+                    loss.backward()
+                    self.optimizer.step()
+                    train_loss+=loss.item()*len(data)
+                    self.loss_curve.append(loss.item())
+                    acc=self.compute_acc(label,pred.detach()[:,:,:self.n_classes])
+                    train_acc+=acc.item()*len(data)
+                    self.acc_curve.append(acc.item())
+                    if self.args.lr_scheduler=="cosine_m":
+                        dt = math.pi/float(epoch_num)
+                        tt += float(dt)/(len(self.train_loader.dataset)/float(self.args.batch_size))
+                        if tt >= math.pi - 0.05:
+                            tt = math.pi - 0.05
+                        curT = math.pi/2.0 + tt
+                        new_lr = self.args.learning_rate * (1.0 + math.sin(curT))/2.0    # lr_min = 0, lr_max = lr
+                        for param_group in self.optimizer.param_groups:
+                            param_group['lr'] = new_lr
+                    if batch_idx % self.log_interval == 0:
+
+
+                        print(weights)
+                        self.log_file.write((str(weights)+"\n"))
+                        
+                        
+                        self.log_file.write('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.4f}\tAcc: {:.4f}\n'.format(
+                            epoch, batch_idx * len(data), len(self.train_loader.dataset),
+                            100. * batch_idx * len(data)/ len(self.train_loader.dataset),
+                            loss.item(),acc.item()))
+                        print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.4f}\tAcc: {:.4f}'.format(
+                            epoch, batch_idx * len(data), len(self.train_loader.dataset),
+                            100. * batch_idx * len(data)/ len(self.train_loader.dataset),
+                            loss.item(),acc.item()))
+                mean_uncertainties=[np.mean(self.uncertainty_curve[0][self.uncertainty_index:]),np.mean(self.uncertainty_curve[1][self.uncertainty_index:]),np.mean(self.uncertainty_curve[2][self.uncertainty_index:]),np.mean(self.uncertainty_curve[3][self.uncertainty_index:])]
+                self.uncertainty_index=len(self.uncertainty_curve[0])
+                self.log_file.write("phase "+str(phase))
+                print("phase "+str(phase))
+                self.log_file.write('====> Train Epoch: {} Average loss: {:.4f} Average acc: {:.4f}\n'.format(
+                    epoch, train_loss/len(self.train_loader.dataset), train_acc/len(self.train_loader.dataset)))
+                print('====> Train Epoch: {} Average loss: {:.4f} Average acc: {:.4f}'.format(
+                    epoch, train_loss/len(self.train_loader.dataset), train_acc/len(self.train_loader.dataset)))
+                self.log_file.write('====> Train Epoch: {} Average uncertainties: {:.4f}, {:.4f}, {:.4f}, {:.4f}\n'.format(epoch,mean_uncertainties[0],mean_uncertainties[1],mean_uncertainties[2],mean_uncertainties[3]))
+                print('====> Train Epoch: {} Average uncertainties: {:.4f}, {:.4f}, {:.4f}, {:.4f}'.format(epoch,mean_uncertainties[0],mean_uncertainties[1],mean_uncertainties[2],mean_uncertainties[3]))
+                test_res=self.test(self.test_loader)
+                self.test_loss_curve.append(test_res[0])
+                self.test_acc_curve.append(test_res[1])
+                if self.args.corruption_type!="partial_unif":
+                    self.test_uncertainty_curve[0].append(test_res[2][0].mean().item())
+                    self.test_uncertainty_curve[1].append(test_res[2][1].mean().item())
+                    self.test_uncertainty_curve[2].append(test_res[2][2].mean().item())
+                    self.test_uncertainty_curve[3].append(test_res[2][3].mean().item())
+                else:
+                    self.co_test_uncertainty_curve[0].append(test_res[2][0].mean().item())
+                    self.co_test_uncertainty_curve[1].append(test_res[2][1].mean().item())
+                    self.co_test_uncertainty_curve[2].append(test_res[2][2].mean().item())
+                    self.co_test_uncertainty_curve[3].append(test_res[2][3].mean().item())
+                    self.cl_test_uncertainty_curve[0].append(test_res[3][0].mean().item())
+                    self.cl_test_uncertainty_curve[1].append(test_res[3][1].mean().item())
+                    self.cl_test_uncertainty_curve[2].append(test_res[3][2].mean().item())
+                    self.cl_test_uncertainty_curve[3].append(test_res[3][3].mean().item())
+                if max(self.test_acc_curve)==test_res[1] or len(self.test_acc_curve)==0:#early stop
+                    self.save()
+                    self.best_test_acc=test_res[1]
+                if self.args.lr_scheduler!="cosine_m":
+                    self.lr_scheduler.step()
+                self.last_test_acc=test_res[1]
+        train_phase(0,self.args.p0epochs)
+        train_phase(1,self.args.p1epochs)
         
         plt.clf()
         fig, axes = plt.subplots(2, 2, sharex="all")
 
-        axes[0,0].plot(uncertainty_curve[0])
+        axes[0,0].plot(self.uncertainty_curve[0])
         axes[0,0].set_title('aleatoric pred')
         axes[0,0].set_ylabel("uncertainty")
         axes[0,0].set_xlabel("Iteration")
 
-        axes[1,0].plot(uncertainty_curve[1])
+        axes[1,0].plot(self.uncertainty_curve[1])
         axes[1,0].set_title('entropy')
         axes[1,0].set_ylabel("uncertainty")
         axes[1,0].set_xlabel("Iteration")
 
-        axes[0,1].plot(uncertainty_curve[2])
+        axes[0,1].plot(self.uncertainty_curve[2])
         axes[0,1].set_title('logits var')
         axes[0,1].set_ylabel("uncertainty")
         axes[0,1].set_xlabel("Iteration")
 
-        axes[1,1].plot(uncertainty_curve[3])
+        axes[1,1].plot(self.uncertainty_curve[3])
         axes[1,1].set_title('variational ratio')
         axes[1,1].set_ylabel("uncertainty")
         axes[1,1].set_xlabel("Iteration")
@@ -368,48 +437,48 @@ class Baseline_model:
         plt.clf()
         fig, axes = plt.subplots(2, 2, sharex="all")
         if self.args.corruption_type!="partial_unif":
-            axes[0,0].plot(test_uncertainty_curve[0])
+            axes[0,0].plot(self.test_uncertainty_curve[0])
             axes[0,0].set_title('aleatoric pred')
             axes[0,0].set_ylabel("uncertainty")
             axes[0,0].set_xlabel("Iteration")
 
-            axes[1,0].plot(test_uncertainty_curve[1])
+            axes[1,0].plot(self.test_uncertainty_curve[1])
             axes[1,0].set_title('entropy')
             axes[1,0].set_ylabel("uncertainty")
             axes[1,0].set_xlabel("Iteration")
 
-            axes[0,1].plot(test_uncertainty_curve[2])
+            axes[0,1].plot(self.test_uncertainty_curve[2])
             axes[0,1].set_title('logits var')
             axes[0,1].set_ylabel("uncertainty")
             axes[0,1].set_xlabel("Iteration")
 
-            axes[1,1].plot(test_uncertainty_curve[3])
+            axes[1,1].plot(self.test_uncertainty_curve[3])
             axes[1,1].set_title('variational ratio')
             axes[1,1].set_ylabel("uncertainty")
             axes[1,1].set_xlabel("Iteration")
             plt.savefig(os.path.join(self.results_dir,self.settingstr+"_testing_uncertainty.png"))
             plt.close()
         else:
-            axes[0,0].plot(co_test_uncertainty_curve[0],label="corrupted")
-            axes[0,0].plot(cl_test_uncertainty_curve[0],label="clean")
+            axes[0,0].plot(self.co_test_uncertainty_curve[0],label="corrupted")
+            axes[0,0].plot(self.cl_test_uncertainty_curve[0],label="clean")
             axes[0,0].set_title('aleatoric pred')
             axes[0,0].set_ylabel("uncertainty")
             axes[0,0].set_xlabel("Iteration")
 
-            axes[1,0].plot(co_test_uncertainty_curve[1],label="corrupted")
-            axes[1,0].plot(cl_test_uncertainty_curve[1],label="clean")
+            axes[1,0].plot(self.co_test_uncertainty_curve[1],label="corrupted")
+            axes[1,0].plot(self.cl_test_uncertainty_curve[1],label="clean")
             axes[1,0].set_title('entropy')
             axes[1,0].set_ylabel("uncertainty")
             axes[1,0].set_xlabel("Iteration")
 
-            axes[0,1].plot(co_test_uncertainty_curve[2],label="corrupted")
-            axes[0,1].plot(cl_test_uncertainty_curve[2],label="clean")
+            axes[0,1].plot(self.co_test_uncertainty_curve[2],label="corrupted")
+            axes[0,1].plot(self.cl_test_uncertainty_curve[2],label="clean")
             axes[0,1].set_title('logits var')
             axes[0,1].set_ylabel("uncertainty")
             axes[0,1].set_xlabel("Iteration")
 
-            axes[1,1].plot(co_test_uncertainty_curve[3],label="corrupted")
-            axes[1,1].plot(cl_test_uncertainty_curve[3],label="clean")
+            axes[1,1].plot(self.co_test_uncertainty_curve[3],label="corrupted")
+            axes[1,1].plot(self.cl_test_uncertainty_curve[3],label="clean")
             axes[1,1].set_title('variational ratio')
             axes[1,1].set_ylabel("uncertainty")
             axes[1,1].set_xlabel("Iteration")
@@ -418,35 +487,35 @@ class Baseline_model:
             plt.close()
 
         plt.clf()
-        plt.plot(loss_curve)
+        plt.plot(self.loss_curve)
         plt.yscale('log')
         plt.title('training loss curve')
         plt.grid(True)
         plt.savefig(os.path.join(self.results_dir,"train_loss"))
         plt.close()
         plt.clf()
-        plt.plot(test_loss_curve)
+        plt.plot(self.test_loss_curve)
         plt.yscale('log')
         plt.title('testing loss curve')
         plt.grid(True)
         plt.savefig(os.path.join(self.results_dir,"test_loss"))
         plt.close()
         plt.clf()
-        plt.plot(acc_curve)
+        plt.plot(self.acc_curve)
         plt.title('training acc curve')
         plt.savefig(os.path.join(self.results_dir,"train_acc"))
         plt.close()
         plt.clf()
-        plt.plot(test_acc_curve)
+        plt.plot(self.test_acc_curve)
         plt.title('testing acc curve')
         plt.savefig(os.path.join(self.results_dir,"test_acc"))
         plt.close()
         end=time.perf_counter()
-        self.log_file='base total training time: {:.4f}\n'.format(end-begin)+self.log_file
-        self.log_file="best test acc: "+str(self.best_test_acc)+"\n"+self.log_file
-        with open(self.log_file_dir+"_"+str(self.best_test_acc)+"_"+str(self.last_test_acc)+".txt","w") as f:
-            f.write(self.log_file)
-        self.log_file=str()
+        self.log_file.write('base total training time: {:.4f}\n'.format(end-begin))
+        self.log_file.write("best test acc: "+str(self.best_test_acc)+"\n")
+        with open(os.path.join(self.results_dir,str(self.best_test_acc)+"_"+str(self.last_test_acc)+".txt"),"w") as f:
+            f.write("acc sign")
+        self.log_file.close()
 
     def test(self, test_loader):
         self.module.eval()
@@ -517,19 +586,18 @@ class Baseline_model:
         else:
             co_mean_uncertainties=[np.mean(co_ucurve[0]),np.mean(co_ucurve[1]),np.mean(co_ucurve[2]),np.mean(co_ucurve[3])]
             cl_mean_uncertainties=[np.mean(cl_ucurve[0]),np.mean(cl_ucurve[1]),np.mean(cl_ucurve[2]),np.mean(cl_ucurve[3])]
-        self.log_file+='====> Test Average loss: {:.4f} Average acc: {:.4f}\n'.format(eval_loss/len(test_loader.dataset), eval_acc/len(test_loader.dataset))
+        self.log_file.write('====> Test Average loss: {:.4f} Average acc: {:.4f}\n'.format(eval_loss/len(test_loader.dataset), eval_acc/len(test_loader.dataset)))
         print('====> Test Average loss: {:.4f} Average acc: {:.4f}'.format(eval_loss/len(test_loader.dataset), eval_acc/len(test_loader.dataset)))
         if self.args.corruption_type!="partial_unif":
-            self.log_file+='====> Test Average uncertainties: {:.4f}, {:.4f}, {:.4f}, {:.4f}\n'.format(mean_uncertainties[0],mean_uncertainties[1],mean_uncertainties[2],mean_uncertainties[3])
+            self.log_file.write('====> Test Average uncertainties: {:.4f}, {:.4f}, {:.4f}, {:.4f}\n'.format(mean_uncertainties[0],mean_uncertainties[1],mean_uncertainties[2],mean_uncertainties[3]))
             print('====> Test Average uncertainties: {:.4f}, {:.4f}, {:.4f}, {:.4f}'.format(mean_uncertainties[0],mean_uncertainties[1],mean_uncertainties[2],mean_uncertainties[3]))
             return eval_loss/len(test_loader.dataset), eval_acc/len(test_loader.dataset), mean_uncertainties
         else:
-            self.log_file+='====> Test Average corrupted class pics uncertainties: {:.4f}, {:.4f}, {:.4f}, {:.4f}\n'.format(co_mean_uncertainties[0],co_mean_uncertainties[1],co_mean_uncertainties[2],co_mean_uncertainties[3])
+            self.log_file.write('====> Test Average corrupted class pics uncertainties: {:.4f}, {:.4f}, {:.4f}, {:.4f}\n'.format(co_mean_uncertainties[0],co_mean_uncertainties[1],co_mean_uncertainties[2],co_mean_uncertainties[3]))
             print('====> Test Average uncertainties: {:.4f}, {:.4f}, {:.4f}, {:.4f}'.format(co_mean_uncertainties[0],co_mean_uncertainties[1],co_mean_uncertainties[2],co_mean_uncertainties[3]))
-            self.log_file+='====> Test Average clean class pics uncertainties: {:.4f}, {:.4f}, {:.4f}, {:.4f}\n'.format(cl_mean_uncertainties[0],cl_mean_uncertainties[1],cl_mean_uncertainties[2],cl_mean_uncertainties[3])
+            self.log_file.write('====> Test Average clean class pics uncertainties: {:.4f}, {:.4f}, {:.4f}, {:.4f}\n'.format(cl_mean_uncertainties[0],cl_mean_uncertainties[1],cl_mean_uncertainties[2],cl_mean_uncertainties[3]))
             print('====> Test Average uncertainties: {:.4f}, {:.4f}, {:.4f}, {:.4f}'.format(cl_mean_uncertainties[0],cl_mean_uncertainties[1],cl_mean_uncertainties[2],cl_mean_uncertainties[3]))
             return eval_loss/len(test_loader.dataset), eval_acc/len(test_loader.dataset), co_mean_uncertainties, cl_mean_uncertainties
-
 
     def save(self,path="trained_model.pth"):
         torch.save(self.module.state_dict(), os.path.join(self.results_dir,path))

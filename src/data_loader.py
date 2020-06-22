@@ -108,11 +108,18 @@ class Corrupted_dataset():
 
             np.random.seed(self.seed)
             masks=[]
+            self.noised_sample=np.zeros(len(self.cifar))
             for i in range(len(self.cifar)):
                 if self.cifar.targets[i] not in self.train_class:
                     masks.append(i)
                 else:
-                    self.cifar.targets[i] = np.random.choice(self.num_classes, p=C[self.cifar.targets[i]])
+                    label=self.cifar.targets[i]
+                    noised=np.random.choice(self.num_classes, p=C[self.cifar.targets[i]])
+                    self.cifar.targets[i] = noised
+                    if args.clean_only==True:
+                        masks.append(i)
+                    if label!=noised:
+                        self.noised_sample[i]=1
             targets_array=np.array(self.cifar.targets)
             targets_array=np.delete(targets_array,masks,0)
             self.cifar.data=np.delete(self.cifar.data,masks,0)
@@ -133,7 +140,10 @@ class Corrupted_dataset():
         if self.train:
             shuffle = True
         data_loader = DataLoader(dataset=self.cifar,batch_size=self.batch_size,shuffle=shuffle)
-        return data_loader
+        if self.train:
+            return data_loader,self.noised_sample
+        else:
+            return data_loader
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='uncertainty reweighting in noisy datasets')

@@ -293,4 +293,88 @@
   year      = {2015},
 }
 
+@InProceedings{Kiureghian2009AleatoryOE,
+  author = {Armen Der Kiureghian and Ove D. Ditlevsen},
+  title  = {Aleatory or epistemic? Does it matter?},
+  year   = {2009},
+}
+
+@InProceedings{Gal2017DeepBA,
+  author    = {Yarin Gal and Riashat Islam and Zoubin Ghahramani},
+  title     = {Deep Bayesian Active Learning with Image Data},
+  booktitle = {ICML},
+  year      = {2017},
+}
+
+@Article{Khan2019StrikingTR,
+  author  = {Salman H. Khan and Munawar Hayat and Waqas Zamir and Jianbing Shen and Ling Shao},
+  title   = {Striking the Right Balance With Uncertainty},
+  journal = {2019 IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},
+  year    = {2019},
+  pages   = {103-112},
+}
+
+@Article{Taha2019UnsupervisedDU,
+  author  = {Ahmed Taha and Yi-Ting Chen and Teruhisa Misu and Abhinav Shrivastava and Larry Davis},
+  title   = {Unsupervised Data Uncertainty Learning in Visual Retrieval Systems},
+  journal = {ArXiv},
+  year    = {2019},
+  volume  = {abs/1902.02586},
+}
+
+@Article{Hendrycks2017ABF,
+  author  = {Dan Hendrycks and Kevin Gimpel},
+  title   = {A Baseline for Detecting Misclassified and Out-of-Distribution Examples in Neural Networks},
+  journal = {ArXiv},
+  year    = {2017},
+  volume  = {abs/1610.02136},
+}
+
+@Article{6773024,
+  author  = {C. E. {Shannon}},
+  title   = {A mathematical theory of communication},
+  journal = {The Bell System Technical Journal},
+  year    = {1948},
+  volume  = {27},
+  number  = {3},
+  pages   = {379-423},
+}
+
+@Article{Patrini_2017,
+  author    = {Patrini, Giorgio and Rozza, Alessandro and Menon, Aditya Krishna and Nock, Richard and Qu, Lizhen},
+  title     = {Making Deep Neural Networks Robust to Label Noise: A Loss Correction Approach},
+  journal   = {2017 IEEE Conference on Computer Vision and Pattern Recognition (CVPR)},
+  year      = {2017},
+  month     = {Jul},
+  doi       = {10.1109/cvpr.2017.240},
+  isbn      = {9781538604571},
+  publisher = {IEEE},
+  url       = {http://dx.doi.org/10.1109/CVPR.2017.240},
+}
+
+@Article{cifar,
+  author  = {Krizhevsky, A. and Hinton, G.},
+  title   = {Learning multiple layers of features from tiny images},
+  journal = {Computer Science Department, University of Toronto, Tech. Rep},
+  year    = {2009},
+  volume  = {1},
+  month   = {01},
+}
+
+@InProceedings{rn,
+  author = {He, Kaiming and Zhang, Xiangyu and Ren, Shaoqing and Sun, Jian},
+  title  = {Deep Residual Learning for Image Recognition},
+  year   = {2016},
+  pages  = {770-778},
+  month  = {06},
+  doi    = {10.1109/CVPR.2016.90},
+}
+
+@Article{article,
+  author = {Zagoruyko, Sergey and Komodakis, Nikos},
+  title  = {Wide Residual Networks},
+  year   = {2016},
+  month  = {05},
+}
+
 @Comment{jabref-meta: databaseType:bibtex;}
