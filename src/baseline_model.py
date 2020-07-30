@@ -64,8 +64,8 @@ class Baseline_model:
         self.train_loader=train_loader
         self.test_loader=test_loader
         self.noised_sample=noised_sample
-        self.relabel_dataset=copy.deepcopy(self.train_loader.dataset.dataset)#the unchangable dataset
-        self.current_dataset=copy.deepcopy(self.train_loader.dataset.dataset)#changable dataset
+        self.relabel_dataset=copy.deepcopy(self.train_loader.dataset)#the unchangable dataset
+        self.current_dataset=copy.deepcopy(self.train_loader.dataset)#changable dataset
         self.dataset_size=len(self.relabel_dataset)
         self.relabel_loader=DataLoader(dataset=self.relabel_dataset,batch_size=self.args.batch_size,shuffle=False)
 
@@ -78,10 +78,10 @@ class Baseline_model:
         self.nll_criterion=nn.NLLLoss(reduction="none").to(self.device)
         self.crossentropy_criterion=nn.CrossEntropyLoss(reduction="none").to(self.device)
 
-        #self.results_dir = os.path.join(results_dir,time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime()))
+        self.time_dir = os.path.join(results_dir,time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime()))
         #settingstr=args.corruption_type+str(args.corruption_prob)+"_"+args.model+str(args.depth)+str(args.net_arg)+"_"+args.lr_scheduler+"_"+"base"
         self.settingstr=args.corruption_type+str(args.corruption_prob)+"_"+args.model+str(args.depth)+str(args.net_arg)+"_"+str(args.num_classes)+'_'+args.loss_type+"_"+str(args.size_ratio)+'_'+str(args.train_class)+'_'+str(args.test_class)+"_"+args.lr_scheduler+"_"+args.reweight+'_'+args.reweight_norm+'_'+args.reweight_function+'_'+str(args.dropout_prob)+"_"+str(args.p0epochs)+"_"+str(args.p1epochs)+"_"+str(args.clean_only)+"_"+args.relabel_f+"_"+str(args.relabel_thre)
-        self.results_dir = os.path.join(results_dir,self.settingstr)
+        self.results_dir = os.path.join(results_dir,self.time_dir)
         if not os.path.exists(self.results_dir):
             os.makedirs(self.results_dir)
         self.best_test_acc=0
@@ -192,9 +192,190 @@ class Baseline_model:
         res=correct.view(-1).float().sum()/batch_size
         return res
 
+    def weight_dist_comp(self,epoch,phase):
+        self.module.eval()
+        all_weights=np.zeros(self.dataset_size)
+        all_var_weights=np.zeros(self.dataset_size)
+        #all_norms=np.zeros(self.dataset_size)
+        index=0
+        for batch_idx, (data,label) in enumerate(self.relabel_loader):
+            data = data.to(self.device)
+            label = label.to(self.device)
+            #data = data.float()
+            #label = label.float()
+            if self.dropout_prob==0:
+                pred = self.sample_predict(data,1)#MC_preds
+            else:
+                pred = self.sample_predict(data,self.mc_n_sample)#MC_preds
+            aleatorics,epistemics,logits_var,variational_ratio=self.calculate_uncertainty(pred)
+            """if self.reweight=="none":
+                weights=torch.ones(pred.shape[1])
+                weights/=len(data)"""
+            if self.reweight=="what":
+                weights = self.compute_weights(epistemics,logits_var)#这weight是归一化的
+            elif self.reweight=="none":
+                weights = F.cross_entropy(pred.detach()[:,:,:self.n_classes].mean(0),label,reduce=False)
+                #norms = torch.norm(pred.detach()[:,:,:self.n_classes].squeeze(),dim=1)
+                var_weights = self.compute_weights(variational_ratio,0)#这weight是归一化的
+            elif self.reweight=="dbst":
+                weights = self.compute_weights(aleatorics,epistemics)#这weight是归一化的
+            elif self.reweight=="entropy":
+                weights = self.compute_weights(epistemics,0)#这weight是归一化的
+            elif self.reweight=="variance":
+                weights = self.compute_weights(logits_var,0)#这weight是归一化的
+            elif self.reweight=="a_pred":
+                weights = self.compute_weights(aleatorics,0)#这weight是归一化的
+            elif self.reweight=="var_ratio":
+                weights = self.compute_weights(variational_ratio,0)#这weight是归一化的
+            all_weights[index:index+len(label)]=weights.cpu()
+            all_var_weights[index:index+len(label)]=var_weights.cpu()
+            #all_norms[index:index+len(label)]=norms.cpu()
+            index+=len(label)
+        clean_s=list(np.argwhere(self.noised_sample==0).reshape(-1))
+        noised_s=list(np.argwhere(self.noised_sample==1).reshape(-1))
+        clean_weights=all_weights[clean_s]
+        noised_weights=all_weights[noised_s]
+        print("drawing weight dist...")
+        self.log_file.write("drawing weight dist..."+"\n")
+        plt.clf()
+        plt.close()
+        plt.hist(all_weights,bins=500,histtype="step",color="b",label="all sample weights")
+        plt.hist(clean_weights,bins=500,histtype="step",color="r",label="clean sample weights")
+        plt.hist(noised_weights,bins=500,histtype="step",color="g",label="noised sample weights")
+        plt.ylabel("freq")
+        plt.xlabel("weight")
+        plt.legend()
+        plt.title("weight distribution")
+        plt.savefig(os.path.join(self.results_dir,"weight_dist"+'p'+str(phase)+'_'+str(epoch)+".png"))
+        plt.close()
+        if self.reweight=="none":
+            clean_var_weights=all_var_weights[clean_s]
+            noised_var_weights=all_var_weights[noised_s]
+            print("drawing varratio weight dist...")
+            self.log_file.write("drawing varratio weight dist..."+"\n")
+            plt.clf()
+            plt.close()
+            plt.hist(all_var_weights,bins=500,histtype="step",color="b",label="all sample")
+            plt.hist(clean_var_weights,bins=500,histtype="step",color="r",label="clean sample")
+            plt.hist(noised_var_weights,bins=500,histtype="step",color="g",label="noised sample")
+            plt.ylabel("freq")
+            plt.xlabel("weight")
+            plt.legend()
+            plt.title("varratio weight distribution")
+            plt.savefig(os.path.join(self.results_dir,"var_weight_dist"+'p'+str(phase)+'_'+str(epoch)+".png"))
+            plt.close()
+            a=[]
+            b=[]
+            va=[]
+            vb=[]
+            precision=[]
+            vprecision=[]
+            common_sample_rate=[]
+            precision_idx=[]
+            vprecision_idx=[]
+            for i,thre in enumerate(self.args.reweight_precision_thre):
+                precision_idx.append(np.zeros(self.dataset_size))
+                vprecision_idx.append(np.zeros(self.dataset_size))
+                precision_idx[i][(-all_weights).argsort()[0:int(self.dataset_size*thre)]]=1
+                vprecision_idx[i][all_var_weights.argsort()[0:int(self.dataset_size*thre)]]=1
+                if i == 0:
+                    self.log_file.write(str(np.argwhere(precision_idx[i]==1)))
+                    self.log_file.write(str(np.argwhere(vprecision_idx[i]==1)))
+                a.append(precision_idx[i]+self.noised_sample)#0,1,2
+                b.append(precision_idx[i]-self.noised_sample)#-1,0,1
+                va.append(vprecision_idx[i]+self.noised_sample)#0,1,2
+                vb.append(vprecision_idx[i]-self.noised_sample)#-1,0,1
+                if precision_idx[i].sum()==0:
+                    precision.append(0)
+                else:
+                    precision.append(((a[i]+10*b[i])==2).astype(int).sum()/precision_idx[i].sum())#so a should be 2 and b should be 0, which means that relabel_idx is 1 and noise_sample is 1
+                if vprecision_idx[i].sum()==0:
+                    vprecision.append(0)
+                else:
+                    vprecision.append(((va[i]+10*vb[i])==2).astype(int).sum()/vprecision_idx[i].sum())#so a should be 2 and b should be 0, which means that relabel_idx is 1 and noise_sample is 1
+                c=precision_idx[i]+vprecision_idx[i]
+                d=precision_idx[i]-vprecision_idx[i]
+                common_sample_rate.append(((c+10*d)==2).astype(int).sum()/int(self.dataset_size*thre))
+            self.log_file.write('====> Average precision list: {}\n'.format(str(precision)))
+            print('====> Average precision list: {}\n'.format(str(precision)))
+            self.log_file.write('====> Average var_precision list: {}\n'.format(str(vprecision)))
+            print('====> Average var_precision list: {}\n'.format(str(vprecision)))
+            self.log_file.write('====> common sample rate list: {}\n'.format(str(common_sample_rate)))
+            print('====> common sampe rate list: {}\n'.format(str(common_sample_rate)))
+        return 0
+
+    def weight_dist(self,epoch,phase):
+        self.module.eval()
+        all_weights=np.zeros(self.dataset_size)
+        #all_norms=np.zeros(self.dataset_size)
+        index=0
+        for batch_idx, (data,label) in enumerate(self.relabel_loader):
+            data = data.to(self.device)
+            label = label.to(self.device)
+            #data = data.float()
+            #label = label.float()
+            if self.dropout_prob==0:
+                pred = self.sample_predict(data,1)#MC_preds
+            else:
+                pred = self.sample_predict(data,self.mc_n_sample)#MC_preds
+            aleatorics,epistemics,logits_var,variational_ratio=self.calculate_uncertainty(pred)
+            """if self.reweight=="none":
+                weights=torch.ones(pred.shape[1])
+                weights/=len(data)"""
+            if self.reweight=="what":
+                weights = self.compute_weights(epistemics,logits_var)#这weight是归一化的
+            elif self.reweight=="none":
+                weights = F.cross_entropy(pred.detach()[:,:,:self.n_classes].mean(0),label,reduce=False)
+                #norms = torch.norm(pred.detach()[:,:,:self.n_classes].squeeze(),dim=1)
+            elif self.reweight=="dbst":
+                weights = self.compute_weights(aleatorics,epistemics)#这weight是归一化的
+            elif self.reweight=="entropy":
+                weights = self.compute_weights(epistemics,0)#这weight是归一化的
+            elif self.reweight=="variance":
+                weights = self.compute_weights(logits_var,0)#这weight是归一化的
+            elif self.reweight=="a_pred":
+                weights = self.compute_weights(aleatorics,0)#这weight是归一化的
+            elif self.reweight=="var_ratio":
+                weights = self.compute_weights(variational_ratio,0)#这weight是归一化的
+            all_weights[index:index+len(label)]=weights.cpu()
+            #all_norms[index:index+len(label)]=norms.cpu()
+            index+=len(label)
+        clean_s=list(np.argwhere(self.noised_sample==0).reshape(-1))
+        noised_s=list(np.argwhere(self.noised_sample==1).reshape(-1))
+        clean_weights=all_weights[clean_s]
+        noised_weights=all_weights[noised_s]
+        #clean_norms=all_norms[clean_s]
+        #noised_norms=all_norms[noised_s]
+        print("drawing weight dist...")
+        self.log_file.write("drawing weight dist..."+"\n")
+        plt.clf()
+        plt.close()
+        plt.hist(all_weights,bins=500,histtype="step",color="b",label="all sample weights")
+        plt.hist(clean_weights,bins=500,histtype="step",color="r",label="clean sample weights")
+        plt.hist(noised_weights,bins=500,histtype="step",color="g",label="noised sample weights")
+        plt.ylabel("freq")
+        plt.xlabel("weight")
+        plt.legend()
+        plt.title("weight distribution")
+        plt.savefig(os.path.join(self.results_dir,"weight_dist"+'p'+str(phase)+'_'+str(epoch)+".png"))
+        plt.close()
+        """print("drawing norm dist...")
+        self.log_file.write("drawing norm dist..."+"\n")
+        plt.clf()
+        plt.close()
+        plt.hist(all_norms,bins=500,histtype="step",color="b",label="all sample norms")
+        plt.hist(clean_norms,bins=500,histtype="step",color="r",label="clean sample norms")
+        plt.hist(noised_norms,bins=500,histtype="step",color="g",label="noised sample norms")
+        plt.ylabel("freq")
+        plt.xlabel("norm")
+        plt.legend()
+        plt.title("norm distribution")
+        plt.savefig(os.path.join(self.results_dir,"norm_dist"+'p'+str(phase)+'_'+str(epoch)+".png"))
+        plt.close()"""
+        return 0
+
     def relabel(self):
         self.module.eval()
-        train_acc = 0.
         data_labels=self.relabel_dataset.targets
         pred_labels=np.zeros(self.dataset_size)
         all_weights=np.zeros(self.dataset_size)
@@ -209,10 +390,10 @@ class Baseline_model:
             else:
                 pred = self.sample_predict(data,self.mc_n_sample)#MC_preds
             aleatorics,epistemics,logits_var,variational_ratio=self.calculate_uncertainty(pred)
-            if self.reweight=="none":
+            """if self.reweight=="none":
                 weights=torch.ones(pred.shape[1])
-                weights/=len(data)
-            elif self.reweight=="what":
+                weights/=len(data)"""
+            if self.reweight=="what":
                 weights = self.compute_weights(epistemics,logits_var)#这weight是归一化的
             elif self.reweight=="dbst":
                 weights = self.compute_weights(aleatorics,epistemics)#这weight是归一化的
@@ -224,12 +405,12 @@ class Baseline_model:
                 weights = self.compute_weights(aleatorics,0)#这weight是归一化的
             elif self.reweight=="var_ratio":
                 weights = self.compute_weights(variational_ratio,0)#这weight是归一化的
+            elif self.reweight=="none":
+                weights = F.cross_entropy(pred.detach()[:,:,:self.n_classes].mean(0),label,reduce=False)
             all_weights[index:index+len(label)]=weights.cpu()
             probs = torch.softmax(pred.detach()[:,:,:self.n_classes],-1)
             final_pred=probs.mean(0)#N*K
             _, batch_pred_label = final_pred.topk(1, -1, True, True)
-            acc=self.compute_acc(label,pred.detach()[:,:,:self.n_classes])
-            train_acc+=acc.item()*len(data)
             pred_labels[index:index+len(label)]=batch_pred_label.reshape(-1).cpu()
             index+=len(label)
             if batch_idx%self.args.log_interval==0:
@@ -242,20 +423,32 @@ class Baseline_model:
         #relabel_idx=(all_weights<self.args.relabel_thre/self.args.batch_size).astype(int)
         relabel_idx=np.zeros(self.dataset_size)
         relabel_idx[all_weights.argsort()[0:int(self.dataset_size*self.args.relabel_thre)]]=1
-
-
-        a=relabel_idx+self.noised_sample#0,1,2
-        b=relabel_idx-self.noised_sample#-1,0,1
-        if relabel_idx.sum()==0:
-            precision=0
-        else:
-            precision=((a+10*b)==2).astype(int).sum()/relabel_idx.sum()#so a should be 2 and b should be 0, which means that relabel_idx is 1 and noise_sample is 1
-        relabeled_labels=relabel_idx*pred_labels+(1-relabel_idx)*data_labels
-        self.log_file.write('====> Average precision: {:.4f}\n'.format(precision))
-        print('====> Average precision: {:.4f}\n'.format(precision))
-        self.current_dataset.targets=torch.tensor(relabeled_labels).long()
-        self.train_loader=DataLoader(dataset=self.current_dataset,batch_size=self.args.batch_size,shuffle=True)
-        return 0
+        a=[]
+        b=[]
+        precision=[]
+        precision_idx=[]
+        for i,thre in enumerate(self.args.reweight_precision_thre):
+            precision_idx.append(np.zeros(self.dataset_size))
+            if self.reweight=="none":
+                precision_idx[i][(-all_weights).argsort()[0:int(self.dataset_size*thre)]]=1
+            else:
+                precision_idx[i][all_weights.argsort()[0:int(self.dataset_size*thre)]]=1
+            a.append(precision_idx[i]+self.noised_sample)#0,1,2
+            b.append(precision_idx[i]-self.noised_sample)#-1,0,1
+            if precision_idx[i].sum()==0:
+                precision.append(0)
+            else:
+                precision.append(((a[i]+10*b[i])==2).astype(int).sum()/precision_idx[i].sum())#so a should be 2 and b should be 0, which means that relabel_idx is 1 and noise_sample is 1
+        self.log_file.write('====> Average precision list: {}\n'.format(str(precision)))
+        print('====> Average precision list: {}\n'.format(str(precision)))
+        if self.args.relabel_thre!=0:
+            relabeled_labels=relabel_idx*pred_labels+(1-relabel_idx)*data_labels
+            self.current_dataset.targets=torch.tensor(relabeled_labels).long()
+            self.train_loader=DataLoader(dataset=self.current_dataset,batch_size=self.args.batch_size,shuffle=True)
+        """
+        这里要搞清楚上面if里面的东西为什么会影响训练结果！！！
+        """
+        return precision
 
     def train(self):
         begin=time.perf_counter()
@@ -264,6 +457,7 @@ class Baseline_model:
         self.test_loss_curve=[]
         self.acc_curve=[]
         self.test_acc_curve=[]
+        self.precision_curve=[]
         if self.args.corruption_type=="partial_unif":
             self.uncertainty_curve=[[],[],[],[]]
             self.co_test_uncertainty_curve=[[],[],[],[]]
@@ -284,11 +478,13 @@ class Baseline_model:
             elif self.args.lr_scheduler=="cosine_m":
                 pass
             else:
+                print(self.args.lr_scheduler)
                 assert False, "invalid lr scheduler"
-            for epoch in range(1,epoch_num+1):
+            for epoch in range(epoch_num):
                 if self.args.relabel_f!="none" and phase!=0:
                     if epoch%(int(self.args.relabel_f))==0:
-                        self.relabel()
+                        with torch.no_grad():
+                            self.precision_curve.append(self.relabel())
                 self.module.train()
                 train_loss = 0.
                 train_acc = 0.
@@ -317,6 +513,7 @@ class Baseline_model:
                         weights=torch.ones(pred.shape[1]).to(self.device)
                         weights/=len(data)
                     elif self.reweight=="what":
+                        F.nll_loss()
                         weights = self.compute_weights(epistemics,logits_var)#这weight是归一化的
                     elif self.reweight=="dbst":
                         weights = self.compute_weights(aleatorics,epistemics)#这weight是归一化的
@@ -406,9 +603,17 @@ class Baseline_model:
                 if self.args.lr_scheduler!="cosine_m":
                     self.lr_scheduler.step()
                 self.last_test_acc=test_res[1]
+                if epoch%20==0:
+                    self.weight_dist(epoch,phase)
         train_phase(0,self.args.p0epochs)
         train_phase(1,self.args.p1epochs)
         
+        if self.reweight=="none":
+            self.weight_dist_comp((self.args.p0epochs+self.args.p1epochs),2)
+        else:
+            self.weight_dist((self.args.p0epochs+self.args.p1epochs),2)
+
+
         plt.clf()
         fig, axes = plt.subplots(2, 2, sharex="all")
 
@@ -431,7 +636,7 @@ class Baseline_model:
         axes[1,1].set_title('variational ratio')
         axes[1,1].set_ylabel("uncertainty")
         axes[1,1].set_xlabel("Iteration")
-        plt.savefig(os.path.join(self.results_dir,self.settingstr+"_training_uncertainty.png"))
+        plt.savefig(os.path.join(self.results_dir,"training_uncertainty.png"))
         plt.close()
 
         plt.clf()
@@ -456,7 +661,7 @@ class Baseline_model:
             axes[1,1].set_title('variational ratio')
             axes[1,1].set_ylabel("uncertainty")
             axes[1,1].set_xlabel("Iteration")
-            plt.savefig(os.path.join(self.results_dir,self.settingstr+"_testing_uncertainty.png"))
+            plt.savefig(os.path.join(self.results_dir,"testing_uncertainty.png"))
             plt.close()
         else:
             axes[0,0].plot(self.co_test_uncertainty_curve[0],label="corrupted")
@@ -483,9 +688,8 @@ class Baseline_model:
             axes[1,1].set_ylabel("uncertainty")
             axes[1,1].set_xlabel("Iteration")
             plt.legend()
-            plt.savefig(os.path.join(self.results_dir,self.settingstr+"_testing_uncertainty.png"))
+            plt.savefig(os.path.join(self.results_dir,"testing_uncertainty.png"))
             plt.close()
-
         plt.clf()
         plt.plot(self.loss_curve)
         plt.yscale('log')
@@ -509,6 +713,14 @@ class Baseline_model:
         plt.plot(self.test_acc_curve)
         plt.title('testing acc curve')
         plt.savefig(os.path.join(self.results_dir,"test_acc"))
+        plt.close()
+        plt.clf()
+        pc=np.array(self.precision_curve)
+        for i, thre in enumerate(self.args.reweight_precision_thre):
+            plt.plot(pc[:,i],label=str(thre)+"% sample")
+        plt.legend()
+        plt.title('precision curve')
+        plt.savefig(os.path.join(self.results_dir,"precision"))
         plt.close()
         end=time.perf_counter()
         self.log_file.write('base total training time: {:.4f}\n'.format(end-begin))

@@ -17,26 +17,31 @@ import torch.utils.data
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets
 import torch.optim as optim
+import torch.nn.functional as F
 
 from baseline_model import Baseline_model
 from simple_model import Simple_model
 from data_loader import Corrupted_dataset
-from meta_weight_net import train_wrn
+#from meta_weight_net import train_wrn
 from models import resnet
 from models import wrn_glc
 from models import wideresnet
 import numpy as np
 import matplotlib.pyplot as plt
 from data_loader import Corrupted_dataset
+import copy
+from torch.utils.data import DataLoader
 
 
 parser = argparse.ArgumentParser(description='uncertainty reweighting in noisy datasets')
-parser.add_argument('--epochs', type=int, default=75,
+parser.add_argument('--epochs', type=int, default=120,
                     help='number of epochs to train')
 parser.add_argument('--no_cuda', action='store_true', default=False,
                     help='enables CUDA training')
 parser.add_argument('--seed', type=int, default=1,
                     help='random seed')
+parser.add_argument('--n_var', type=int, default=10,
+                    help='how many var to predict')
 parser.add_argument('--log_interval', type=int, default=100,
                     help='how many batches to wait before logging training status')
 parser.add_argument('--batch_size', type=int, default=128,
@@ -49,27 +54,103 @@ parser.add_argument('--momentum', type=float, default=0.9,
                     help='momentum')
 parser.add_argument('--nesterov', type=bool, default=True,
                     help='nesterov momentum')
-parser.add_argument('--milestones', type=list, default=[55,65],
+parser.add_argument('--milestones', type=list, default=[80,100],
                     help='milestones for lr')                    
 parser.add_argument('--num_classes', type=int, default=10,
                     help='how many classes in dataset(CIFAR 10 or CIFAR 100)')
-parser.add_argument('--corruption_prob', type=float, default=0,
+parser.add_argument('--corruption_prob', type=float, default=0.6,
                     help='the corrution ratio in the training set')
 parser.add_argument('--corruption_type', type=str, default="unif",
                     help='the corrution type in the training set')
 parser.add_argument('--dropout_prob', type=float, default=0,
                     help='the dropout ratio')
-parser.add_argument('--model', type=str, default="wrn",
+parser.add_argument('--model', type=str, default="rn",
                     help='wrn, rn or dn')
 parser.add_argument('--lr_scheduler', type=str, default="multistep",
                     help='lr scheduler')
 parser.add_argument('--net_arg', type=int, default=2,
                     help='growth rate for densenet and widden factor for wrn')
-parser.add_argument('--depth', type=int, default=40,
+parser.add_argument('--depth', type=int, default=32,
                     help='depth of densenet(resnet is fixed 32)')
+parser.add_argument('--size_ratio', type=float, default=1,
+                    help='use size_ratio of the training set')
+parser.add_argument('--train_class', type=list, default=range(0,10),
+                    help='training set is composed of these classes')
+parser.add_argument('--test_class', type=list, default=range(0,10),
+                    help='testing set is composed of these classes')
+parser.add_argument('--corrupted_classes', type=list, default=[0,1,2,3,4],
+                    help='takes effect when corruption_prob=partial_unif')
+parser.add_argument('--clean_only', type=bool, default=False,
+                    help='train only on the clean part of the dataset')
+parser.add_argument('--relabel_thre', type=float, default=0,
+                    help='relabel threshold ratio on weights(when 128 the threshold will be 1/128*x')
+parser.add_argument('--reweight_precision_thre', type=list, default=[0.1,0.3,0.5,0.7],
+                    help='experiment parameter, calculate the precision of low weight sample in the first x*dataset_size sample with the lowest weight')
 best_prec1 = 0
 log_file=str()
 
+def loss_dist(model,precision_loader,device,noised_sample,results_dir,epoch,args):
+    model.eval()
+    with torch.no_grad():
+        dataset_size=len(precision_loader.dataset)
+        all_weights=np.zeros(dataset_size)
+        all_loss=np.zeros(dataset_size)
+        index=0
+        for batch_idx, (inputs, targets) in enumerate(precision_loader):
+            inputs, targets = inputs.to(device), targets.to(device)
+            outputs = model(inputs)
+            cost_w = F.cross_entropy(outputs, targets, reduce=False)
+            all_loss[index:index+len(targets)]=cost_w.cpu().view(-1)
+            index+=len(targets)
+    
+    clean_s=list(np.argwhere(noised_sample==0).reshape(-1))
+    noised_s=list(np.argwhere(noised_sample==1).reshape(-1))
+    clean_loss=all_loss[clean_s]
+    noised_loss=all_loss[noised_s]
+    print("drawing loss dist...")
+    plt.clf()
+    plt.hist(all_loss,bins=500,histtype="step",color="b",label="all sample loss")
+    plt.hist(clean_loss,bins=500,histtype="step",color="r",label="clean sample loss")
+    plt.hist(noised_loss,bins=500,histtype="step",color="g",label="noised sample loss")
+    plt.ylabel("freq")
+    plt.xlabel("loss")
+    plt.legend()
+    plt.title("loss distribution")
+    plt.savefig(os.path.join(results_dir,"loss_dist"+str(epoch)+".png"))
+    plt.close()
+    return 0
+
+def precision(model,precision_loader,device,noised_sample,args):
+    model.eval()
+    with torch.no_grad():
+        dataset_size=len(precision_loader.dataset)
+        all_weights=np.zeros(dataset_size)
+        all_loss=np.zeros(dataset_size)
+        index=0
+        for batch_idx, (inputs, targets) in enumerate(precision_loader):
+            inputs, targets = inputs.to(device), targets.to(device)
+            outputs = model(inputs)
+            cost_w = F.cross_entropy(outputs, targets, reduce=False)
+            all_loss[index:index+len(targets)]=cost_w.cpu().view(-1)
+            index+=len(targets)
+
+        precision_idx=[]
+        a=[]
+        b=[]
+        precision=[]
+        for i,thre in enumerate(args.reweight_precision_thre):
+            precision_idx.append(np.zeros(dataset_size))
+            precision_idx[i][(-all_loss).argsort()[0:int(dataset_size*thre)]]=1
+            a.append(precision_idx[i]+noised_sample)#0,1,2
+            b.append(precision_idx[i]-noised_sample)#-1,0,1
+            if precision_idx[i].sum()==0:
+                precision.append(0)
+            else:
+                precision.append(((a[i]+10*b[i])==2).astype(int).sum()/precision_idx[i].sum())#so a should be 2 and b should be 0, which means that relabel_idx is 1 and noise_sample is 1
+        #log_file.write('====> Average precision list: {}\n'.format(str(precision)))
+        print('====> Average precision list: {}\n'.format(str(precision)))
+        #log_file.write('====> Average precision list: {}\n'.format(str(precision)))
+    return precision
 
 def main():
     global args, best_prec1, log_file
@@ -81,7 +162,7 @@ def main():
     if not os.path.exists(results_dir):
         os.makedirs(results_dir)
 
-    elif args.model=="rn":
+    if args.model=="rn":
         Net = resnet.ResNet(depth=args.depth,num_classes=args.num_classes,n_var=args.n_var,block_name="BasicBlock")
     elif args.model=="wrn":
         Net = wrn_glc.WideResNet_glc(args.depth, args.num_classes, args.net_arg, args.dropout_prob)
@@ -114,14 +195,16 @@ def main():
 
     #normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],std=[0.229, 0.224, 0.225])
 
-    """train_set=Corrupted_dataset(args,root=data_dir,download=True,transform=None,target_transform=None,train=True)
+    train_set=Corrupted_dataset(args,root=data_dir,download=True,transform=None,target_transform=None,train=True)
     test_set=Corrupted_dataset(args,root=data_dir,download=True,transform=None,target_transform=None,train=False)
-    train_loader=train_set.get_data_loader()
-    val_loader=test_set.get_data_loader()"""
+    train_loader,noised_sample=train_set.get_data_loader()
+    test_loader=test_set.get_data_loader()
+    relabel_dataset=copy.deepcopy(train_loader.dataset)#the unchangable dataset
+    relabel_loader=DataLoader(dataset=relabel_dataset,batch_size=args.batch_size,shuffle=False)
 
-    train_loader, val_loader = train_wrn.build_dataset(args,data_dir)
-    print(len(train_loader.dataset))
-    print(len(val_loader.dataset))
+    #train_loader, test_loader = train_wrn.build_dataset(args,data_dir)
+    #print(len(train_loader.dataset))
+    #print(len(test_loader.dataset))
 
     # define loss function (criterion) and optimizer
     criterion = nn.CrossEntropyLoss()
@@ -131,16 +214,25 @@ def main():
     acc_curve=[]
     test_acc_curve=[]
     tt=0
+    precision_curve=[]
     for epoch in range(args.epochs):
-
+        precision_curve.append(precision(model,relabel_loader,device,noised_sample,args))
         # train for one epoch
         print('current lr {:.5e}'.format(optimizer.param_groups[0]['lr']))
         log_file+='current lr {:.5e}'.format(optimizer.param_groups[0]['lr'])
-        tt=train(train_loader, val_loader, model, criterion, optimizer, epoch,loss_curve,test_loss_curve,acc_curve,test_acc_curve,device,tt)
+        tt=train(train_loader, test_loader, model, criterion, optimizer, epoch,loss_curve,test_loss_curve,acc_curve,test_acc_curve,device,tt)
         if args.lr_scheduler!="cosine_m":
             lr_scheduler.step()
-
-        
+        if epoch%20==0:
+            loss_dist(model,relabel_loader,device,noised_sample,results_dir,epoch,args)
+    loss_dist(model,relabel_loader,device,noised_sample,results_dir,args.epochs-1,args)
+    pc=np.array(precision_curve)
+    for i, thre in enumerate(args.reweight_precision_thre):
+        plt.plot(pc[:,i],label=str(thre)+"% sample")
+    plt.legend()
+    plt.title('precision curve')
+    plt.savefig(os.path.join(results_dir,"precision"))
+    plt.close()
 
     plt.clf()
     plt.plot(loss_curve)
@@ -234,7 +326,7 @@ def train(train_loader, test_loader, model, criterion, optimizer, epoch,loss_cur
     return tt
 
 
-def validate(val_loader, model, criterion,device):
+def validate(test_loader, model, criterion,device):
     """
     Run evaluation
     """
@@ -246,7 +338,7 @@ def validate(val_loader, model, criterion,device):
     model.eval()
 
     with torch.no_grad():
-        for i, (input, target) in enumerate(val_loader):
+        for i, (input, target) in enumerate(test_loader):
             target = target.to(device)
             input_var = input.to(device)
             target_var = target.to(device)
