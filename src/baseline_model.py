@@ -446,7 +446,7 @@ class Baseline_model:
             self.current_dataset.targets=torch.tensor(relabeled_labels).long()
             self.train_loader=DataLoader(dataset=self.current_dataset,batch_size=self.args.batch_size,shuffle=True)
         """
-        这里要搞清楚上面if里面的东西为什么会影响训练结果！！！
+        上面if里面的东西会造成不可预料的对数据集的影响，先在还未查明
         """
         return precision
 
